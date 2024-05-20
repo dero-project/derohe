@@ -148,6 +148,10 @@ rebuild_tx:
 			fees_done = true
 		}
 
+		r_payload := crypto.RandomScalar()
+		r_payload_bytes := [32]byte{}
+		r_payload.FillBytes(r_payload_bytes[:])
+
 		for i := range publickeylist { // setup commitments
 			var x bn256.G1
 			switch {
@@ -176,10 +180,14 @@ rebuild_tx:
 
 				data, _ := transfers[t].Payload_RPC.CheckPack(transaction.PAYLOAD0_LIMIT)
 
-				shared_key := crypto.GenerateSharedSecret(r, publickeylist[i])
+				receiver_key := crypto.GenerateSharedSecret(r_payload, publickeylist[i])
+				sender_key := crypto.GenerateSharedSecret(r_payload, publickeylist[witness_index[0]])
 
 				// witness_index[0] is sender, witness_index[1] is receiver
-				asset.RPCPayload = append([]byte{byte(uint(witness_index[0]))}, data...)
+				asset.RPCPayload = []byte{byte(uint(witness_index[0]))}
+				asset.RPCPayload = append(asset.RPCPayload, sender_key[:]...)
+				asset.RPCPayload = append(asset.RPCPayload, receiver_key[:]...)
+				asset.RPCPayload = append(asset.RPCPayload, data...)
 
 				//fmt.Printf("buulding shared_key %x  index of receiver %d\n",shared_key,i)
 				//fmt.Printf("building plaintext payload %x\n",asset.RPCPayload)
@@ -187,7 +195,7 @@ rebuild_tx:
 				//fmt.Printf("%d packed rpc payload %d %x\n ", t, len(data), data)
 				// make sure used data encryption is optional, just in case we would like to play together with ring members
 				// we intoduce an element to create dependency of input key, so receiver cannot prove otherwise
-				crypto.EncryptDecryptUserData(crypto.Keccak256(shared_key[:], publickeylist[i].EncodeCompressed()), asset.RPCPayload)
+				crypto.EncryptDecryptUserData(crypto.Keccak256(r_payload_bytes[:], publickeylist[i].EncodeCompressed()), asset.RPCPayload)
 
 				//fmt.Printf("building encrypted payload %x\n",asset.RPCPayload)
 
