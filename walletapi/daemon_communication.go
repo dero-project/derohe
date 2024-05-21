@@ -992,7 +992,7 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 							entry.PayloadType = tx.Payloads[t].RPCType
 							switch tx.Payloads[t].RPCType {
 
-							case 0:
+							case transaction.ENCRYPTED_DEFAULT_PAYLOAD_CBOR:
 
 								//fmt.Printf("decoding encrypted payload %x\n",tx.Payloads[t].RPCPayload)
 								crypto.EncryptDecryptUserData(crypto.Keccak256(shared_key[:], w.GetAddress().PublicKey.EncodeCompressed()), tx.Payloads[t].RPCPayload)
@@ -1019,6 +1019,40 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 								_ = args
 
 							//	fmt.Printf("data received %s idx %d arguments %s\n", string(entry.Payload), sender_idx, args)
+
+							case transaction.ENCRYPTED_DEFAULT_PAYLOAD_CBOR_V2:
+								rpc_payload := tx.Payloads[t].RPCPayload
+								// sender_key := rpc_payload[0:32]
+								// We are the receiver
+								receiver_handle := rpc_payload[32:64]
+								handle := new(big.Int).SetBytes(receiver_handle)
+								// private key scalar * receiver handle
+								r := new(big.Int).Mul(w.account.Keys.Secret.BigInt(), handle)
+								key := crypto.Keccak256(r.Bytes(), w.GetAddress().PublicKey.EncodeCompressed())
+
+								payload := rpc_payload[64:]
+								crypto.EncryptDecryptUserData(key, payload)
+								//fmt.Printf("decoded plaintext payload %x\n",tx.Payloads[t].RPCPayload)
+								sender_idx := uint(payload[0])
+								// if ring size is 2, the other party is the sender so mark it so
+								if uint(tx.Payloads[t].Statement.RingSize) == 2 {
+									sender_idx = 0
+									if j == 0 {
+										sender_idx = 1
+									}
+								}
+
+								if sender_idx <= uint(tx.Payloads[t].Statement.RingSize) {
+									addr := rpc.NewAddressFromKeys((*crypto.Point)(tx.Payloads[t].Statement.Publickeylist[sender_idx]))
+									addr.Mainnet = w.GetNetwork()
+									entry.Sender = addr.String()
+								}
+
+								entry.Payload = append(entry.Payload, payload[1:]...)
+								entry.Data = append(entry.Data, payload[:]...)
+
+								args, _ := entry.ProcessPayload()
+								_ = args
 
 							default:
 								entry.PayloadError = fmt.Sprintf("unknown payload type %d", tx.Payloads[t].RPCType)

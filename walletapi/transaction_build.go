@@ -149,8 +149,6 @@ rebuild_tx:
 		}
 
 		r_payload := crypto.RandomScalar()
-		r_payload_bytes := [32]byte{}
-		r_payload.FillBytes(r_payload_bytes[:])
 
 		for i := range publickeylist { // setup commitments
 			var x bn256.G1
@@ -186,8 +184,8 @@ rebuild_tx:
 
 				// Generate the keys for each party
 				// those are stored in the payload too
-				receiver_key := crypto.GenerateSharedSecret(r_payload, publickeylist[i])
 				sender_key := crypto.GenerateSharedSecret(r_payload, publickeylist[witness_index[0]])
+				receiver_key := crypto.GenerateSharedSecret(r_payload, publickeylist[i])
 
 				asset.RPCPayload = append(asset.RPCPayload, sender_key[:]...)
 				asset.RPCPayload = append(asset.RPCPayload, receiver_key[:]...)
@@ -199,7 +197,7 @@ rebuild_tx:
 
 				// make sure used data encryption is optional, just in case we would like to play together with ring members
 				// we intoduce an element to create dependency of input key, so receiver cannot prove otherwise
-				crypto.EncryptDecryptUserData(crypto.Keccak256(r_payload_bytes[:], publickeylist[i].EncodeCompressed()), payload)
+				crypto.EncryptDecryptUserData(crypto.Keccak256(r_payload.Bytes(), publickeylist[i].EncodeCompressed()), payload)
 
 				// Inject the encrypted payload now
 				asset.RPCPayload = append(asset.RPCPayload, payload...)
