@@ -16,14 +16,16 @@
 
 package transaction
 
-import "fmt"
-import "bytes"
-import "math/big"
-import "encoding/binary"
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"math/big"
 
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/cryptography/bn256"
-import "github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/rpc"
+)
 
 type TransactionType uint64
 
@@ -62,7 +64,14 @@ const PAYLOAD_LIMIT = 1 + 144 // entire payload header is mandatorily encrypted
 // 144 byte payload  ( to implement specific functionality such as delivery of keys etc), user dependent encryption
 const PAYLOAD0_LIMIT = 144 // 1 byte has been reserved for sender position in ring representation in a byte, uptp 256 ring
 
+// Payload V2 limit size
+// 33 bytes are for the two keys included in the payload for decrypt/encrypt process
+const PAYLOAD_V2_LIMIT = PAYLOAD0_LIMIT - (32 * 2)
+
 const ENCRYPTED_DEFAULT_PAYLOAD_CBOR = byte(0)
+
+// New payload format used
+const ENCRYPTED_DEFAULT_PAYLOAD_CBOR_V2 = byte(1)
 
 // the core transaction
 // in our design, tx cam be sent by 1 wallet, but SC part/gas can be signed by any other user, but this is not implemented

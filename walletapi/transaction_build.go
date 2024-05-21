@@ -176,26 +176,33 @@ rebuild_tx:
 					panic("currently we donot support ring size >= 512")
 				}
 
-				asset.RPCType = transaction.ENCRYPTED_DEFAULT_PAYLOAD_CBOR
+				asset.RPCType = transaction.ENCRYPTED_DEFAULT_PAYLOAD_CBOR_V2
 
-				data, _ := transfers[t].Payload_RPC.CheckPack(transaction.PAYLOAD0_LIMIT)
+				data, err := transfers[t].Payload_RPC.CheckPack(transaction.PAYLOAD_V2_LIMIT)
+				if err != nil {
+					// TODO, we should returns all the error
+					return nil
+				}
 
+				// Generate the keys for each party
+				// those are stored in the payload too
 				receiver_key := crypto.GenerateSharedSecret(r_payload, publickeylist[i])
 				sender_key := crypto.GenerateSharedSecret(r_payload, publickeylist[witness_index[0]])
 
-				// witness_index[0] is sender, witness_index[1] is receiver
-				asset.RPCPayload = []byte{byte(uint(witness_index[0]))}
 				asset.RPCPayload = append(asset.RPCPayload, sender_key[:]...)
 				asset.RPCPayload = append(asset.RPCPayload, receiver_key[:]...)
-				asset.RPCPayload = append(asset.RPCPayload, data...)
 
-				//fmt.Printf("buulding shared_key %x  index of receiver %d\n",shared_key,i)
-				//fmt.Printf("building plaintext payload %x\n",asset.RPCPayload)
+				var payload []byte
+				// witness_index[0] is sender, witness_index[1] is receiver
+				payload = append(payload, byte(uint(witness_index[0])))
+				payload = append(payload, data...)
 
-				//fmt.Printf("%d packed rpc payload %d %x\n ", t, len(data), data)
 				// make sure used data encryption is optional, just in case we would like to play together with ring members
 				// we intoduce an element to create dependency of input key, so receiver cannot prove otherwise
-				crypto.EncryptDecryptUserData(crypto.Keccak256(r_payload_bytes[:], publickeylist[i].EncodeCompressed()), asset.RPCPayload)
+				crypto.EncryptDecryptUserData(crypto.Keccak256(r_payload_bytes[:], publickeylist[i].EncodeCompressed()), payload)
+
+				// Inject the encrypted payload now
+				asset.RPCPayload = append(asset.RPCPayload, payload...)
 
 				//fmt.Printf("building encrypted payload %x\n",asset.RPCPayload)
 
