@@ -949,7 +949,30 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 										args, _ := entry.ProcessPayload()
 										_ = args
 
-									//	fmt.Printf("data received %s idx %d arguments %s\n", string(entry.Payload), sender_idx, args)
+									case transaction.ENCRYPTED_DEFAULT_PAYLOAD_CBOR_V2:
+										rpc_payload := tx.Payloads[t].RPCPayload
+										// We are the sender
+										var handle bn256.G1
+										err = handle.DecodeCompressed(rpc_payload[0:33])
+										if err != nil {
+											continue
+										}
+
+										r := crypto.DeriveKeyFromPoint(&handle, w.Get_Keys().Secret.BigInt())
+										key := crypto.Keccak256(r[:], tx.Payloads[t].Statement.Publickeylist[k].EncodeCompressed())
+
+										payload := rpc_payload[66:]
+										crypto.EncryptDecryptUserData(key, payload)
+
+										addr := rpc.NewAddressFromKeys((*crypto.Point)(w.account.Keys.Public.G1()))
+										addr.Mainnet = w.GetNetwork()
+										entry.Sender = addr.String()
+
+										entry.Payload = append(entry.Payload, rpc_payload[1:]...)
+										entry.Data = append(entry.Data, rpc_payload[:]...)
+
+										args, _ := entry.ProcessPayload()
+										_ = args
 
 									default:
 										entry.PayloadError = fmt.Sprintf("unknown payload type %d", tx.Payloads[t].RPCType)
@@ -1022,17 +1045,18 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 
 							case transaction.ENCRYPTED_DEFAULT_PAYLOAD_CBOR_V2:
 								rpc_payload := tx.Payloads[t].RPCPayload
-								// sender_key := rpc_payload[0:32]
 								// We are the receiver
-								receiver_handle := rpc_payload[32:64]
-								handle := new(big.Int).SetBytes(receiver_handle)
-								// private key scalar * receiver handle
-								r := new(big.Int).Mul(w.account.Keys.Secret.BigInt(), handle)
-								key := crypto.Keccak256(r.Bytes(), w.GetAddress().PublicKey.EncodeCompressed())
+								var handle bn256.G1
+								err = handle.DecodeCompressed(rpc_payload[33:66])
+								if err != nil {
+									continue
+								}
 
-								payload := rpc_payload[64:]
+								r := crypto.DeriveKeyFromPoint(&handle, w.Get_Keys().Secret.BigInt())
+								key := crypto.Keccak256(r[:], w.GetAddress().PublicKey.EncodeCompressed())
+
+								payload := rpc_payload[66:]
 								crypto.EncryptDecryptUserData(key, payload)
-								//fmt.Printf("decoded plaintext payload %x\n",tx.Payloads[t].RPCPayload)
 								sender_idx := uint(payload[0])
 								// if ring size is 2, the other party is the sender so mark it so
 								if uint(tx.Payloads[t].Statement.RingSize) == 2 {

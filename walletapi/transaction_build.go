@@ -59,7 +59,7 @@ rebuild_tx:
 		panic("currently we cannot use more than 240 bits")
 	}
 
-	for t, _ := range transfers {
+	for t := range transfers {
 
 		var publickeylist, C, CLn, CRn []*bn256.G1
 		var D bn256.G1
@@ -148,7 +148,8 @@ rebuild_tx:
 			fees_done = true
 		}
 
-		r_payload := crypto.RandomScalar()
+		// Generate a new randomness for the payload
+		r_payload := crypto.RandomScalarBNRed()
 
 		for i := range publickeylist { // setup commitments
 			var x bn256.G1
@@ -184,11 +185,13 @@ rebuild_tx:
 
 				// Generate the keys for each party
 				// those are stored in the payload too
-				sender_key := crypto.GenerateSharedSecret(r_payload, publickeylist[witness_index[0]])
-				receiver_key := crypto.GenerateSharedSecret(r_payload, publickeylist[i])
+				sender_key := new(bn256.G1).ScalarMult(publickeylist[witness_index[0]], r_payload.BigInt())
+				receiver_key := new(bn256.G1).ScalarMult(publickeylist[i], r_payload.BigInt())
 
-				asset.RPCPayload = append(asset.RPCPayload, sender_key[:]...)
-				asset.RPCPayload = append(asset.RPCPayload, receiver_key[:]...)
+				// Each point is 33 bytes compressed
+				// This means we have a 66 bytes overhead
+				asset.RPCPayload = append(asset.RPCPayload, sender_key.EncodeCompressed()...)
+				asset.RPCPayload = append(asset.RPCPayload, receiver_key.EncodeCompressed()...)
 
 				var payload []byte
 				// witness_index[0] is sender, witness_index[1] is receiver
@@ -197,12 +200,11 @@ rebuild_tx:
 
 				// make sure used data encryption is optional, just in case we would like to play together with ring members
 				// we intoduce an element to create dependency of input key, so receiver cannot prove otherwise
-				crypto.EncryptDecryptUserData(crypto.Keccak256(r_payload.Bytes(), publickeylist[i].EncodeCompressed()), payload)
+				bytes := crypto.DeriveKeyFromR(r_payload)
+				crypto.EncryptDecryptUserData(crypto.Keccak256(bytes[:], publickeylist[i].EncodeCompressed()), payload)
 
 				// Inject the encrypted payload now
 				asset.RPCPayload = append(asset.RPCPayload, payload...)
-
-				//fmt.Printf("building encrypted payload %x\n",asset.RPCPayload)
 
 			default:
 				x.ScalarMult(crypto.G, new(big.Int).SetInt64(0))

@@ -1,8 +1,9 @@
 package crypto
 
 import (
-	"math/big"
 	"testing"
+
+	"github.com/deroproject/derohe/cryptography/bn256"
 )
 
 func TestEncryptDecrypt(t *testing.T) {
@@ -21,21 +22,20 @@ func TestEncryptDecrypt(t *testing.T) {
 	}
 }
 
-// TODO FIXME
 func TestSharedKey(t *testing.T) {
-	r := RandomScalar()
+	r := RandomScalarBNRed()
 	private_key := RandomScalarBNRed()
 	public_key := GPoint.ScalarMult(private_key)
 
-	encrypted_key := GenerateSharedSecret(r, public_key.G1())
+	// Create a curve point using PK
+	encrypted_key := new(bn256.G1).ScalarMult(public_key.G1(), r.BigInt())
 
-	big_key := new(big.Int).SetBytes(encrypted_key[:])
-	decrypted_r := new(big.Int).Mul(private_key.BigInt(), big_key)
+	// Decrypt it
+	decrypted_r := DeriveKeyFromPoint(encrypted_key, private_key.BigInt())
 
-	r_bytes := r.Bytes()
-	decrypted_r_bytes := decrypted_r.Bytes()
+	r_bytes := DeriveKeyFromR(r)
 	for i := range r_bytes {
-		if r_bytes[i] != decrypted_r_bytes[i] {
+		if r_bytes[i] != decrypted_r[i] {
 			t.Fatalf("error on shared key, index: %d", i)
 		}
 	}

@@ -66,7 +66,7 @@ const PAYLOAD0_LIMIT = 144 // 1 byte has been reserved for sender position in ri
 
 // Payload V2 limit size
 // 33 bytes are for the two keys included in the payload for decrypt/encrypt process
-const PAYLOAD_V2_LIMIT = PAYLOAD0_LIMIT - (32 * 2)
+const PAYLOAD_V2_LIMIT = PAYLOAD0_LIMIT - (33 * 2)
 
 const ENCRYPTED_DEFAULT_PAYLOAD_CBOR = byte(0)
 
