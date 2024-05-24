@@ -922,18 +922,17 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 									x.Add(new(bn256.G1).Set(&x), tx.Payloads[t].Statement.C[k]) // get the blinder
 									blinder := &x
 
-									shared_key := crypto.GenerateSharedSecret(r, tx.Payloads[t].Statement.Publickeylist[k])
-
 									// proof is blinder + amount transferred, it will recover the encrypted rpc payload also
 									// enable sender side proofs
 									proof := rpc.NewAddressFromKeys((*crypto.Point)(blinder))
 									proof.Proof = true
-									proof.Arguments = rpc.Arguments{{Name: "H", DataType: rpc.DataHash, Value: crypto.Hash(shared_key)}, {Name: rpc.RPC_VALUE_TRANSFER, DataType: rpc.DataUint64, Value: uint64(entry.Amount - entry.Burn)}}
-									entry.Proof = proof.String()
+
 									entry.PayloadType = tx.Payloads[t].RPCType
 									switch tx.Payloads[t].RPCType {
 
 									case transaction.ENCRYPTED_DEFAULT_PAYLOAD_CBOR:
+										shared_key := crypto.GenerateSharedSecret(r, tx.Payloads[t].Statement.Publickeylist[k])
+										proof.Arguments = rpc.Arguments{{Name: "H", DataType: rpc.DataHash, Value: crypto.Hash(shared_key)}, {Name: rpc.RPC_VALUE_TRANSFER, DataType: rpc.DataUint64, Value: uint64(entry.Amount - entry.Burn)}}
 
 										crypto.EncryptDecryptUserData(crypto.Keccak256(shared_key[:], tx.Payloads[t].Statement.Publickeylist[k].EncodeCompressed()), tx.Payloads[t].RPCPayload)
 										//fmt.Printf("decoded plaintext payload t %d  %x\n",t,tx.Payloads[t].RPCPayload)
@@ -961,6 +960,8 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 										r := crypto.DeriveKeyFromPoint(&handle, w.Get_Keys().Secret.BigInt())
 										key := crypto.Keccak256(r[:], tx.Payloads[t].Statement.Publickeylist[k].EncodeCompressed())
 
+										proof.Arguments = rpc.Arguments{{Name: "H", DataType: rpc.DataHash, Value: crypto.Hash(key)}, {Name: rpc.RPC_VALUE_TRANSFER, DataType: rpc.DataUint64, Value: uint64(entry.Amount - entry.Burn)}}
+
 										payload := rpc_payload[66:]
 										crypto.EncryptDecryptUserData(key, payload)
 
@@ -979,6 +980,7 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 										entry.Payload = tx.Payloads[t].RPCPayload
 									}
 
+									entry.Proof = proof.String()
 									//paymentID := binary.BigEndian.Uint64(payment_id_encrypted_bytes[:]) // get decrypted payment id
 
 									addr := rpc.NewAddressFromKeys((*crypto.Point)(tx.Payloads[t].Statement.Publickeylist[k]))
@@ -1004,18 +1006,16 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 
 							blinder := &x
 
-							shared_key := crypto.GenerateSharedSecret(w.account.Keys.Secret.BigInt(), tx.Payloads[t].Statement.D)
-
 							// enable receiver side proofs
 							proof := rpc.NewAddressFromKeys((*crypto.Point)(blinder))
 							proof.Proof = true
-							proof.Arguments = rpc.Arguments{{Name: "H", DataType: rpc.DataHash, Value: crypto.Hash(shared_key)}, {Name: rpc.RPC_VALUE_TRANSFER, DataType: rpc.DataUint64, Value: uint64(entry.Amount)}}
-							entry.Proof = proof.String()
 
 							entry.PayloadType = tx.Payloads[t].RPCType
 							switch tx.Payloads[t].RPCType {
 
 							case transaction.ENCRYPTED_DEFAULT_PAYLOAD_CBOR:
+								shared_key := crypto.GenerateSharedSecret(w.account.Keys.Secret.BigInt(), tx.Payloads[t].Statement.D)
+								proof.Arguments = rpc.Arguments{{Name: "H", DataType: rpc.DataHash, Value: crypto.Hash(shared_key)}, {Name: rpc.RPC_VALUE_TRANSFER, DataType: rpc.DataUint64, Value: uint64(entry.Amount)}}
 
 								//fmt.Printf("decoding encrypted payload %x\n",tx.Payloads[t].RPCPayload)
 								crypto.EncryptDecryptUserData(crypto.Keccak256(shared_key[:], w.GetAddress().PublicKey.EncodeCompressed()), tx.Payloads[t].RPCPayload)
@@ -1054,6 +1054,7 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 
 								r := crypto.DeriveKeyFromPoint(&handle, w.Get_Keys().Secret.BigInt())
 								key := crypto.Keccak256(r[:], w.GetAddress().PublicKey.EncodeCompressed())
+								proof.Arguments = rpc.Arguments{{Name: "H", DataType: rpc.DataHash, Value: crypto.Hash(key)}, {Name: rpc.RPC_VALUE_TRANSFER, DataType: rpc.DataUint64, Value: uint64(entry.Amount)}}
 
 								payload := rpc_payload[66:]
 								crypto.EncryptDecryptUserData(key, payload)
@@ -1082,7 +1083,7 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 								entry.PayloadError = fmt.Sprintf("unknown payload type %d", tx.Payloads[t].RPCType)
 								entry.Payload = tx.Payloads[t].RPCPayload
 							}
-
+							entry.Proof = proof.String()
 							//fmt.Printf("Received %s amount in TX(%d) %s payment id %x Src_ID %s data %s\n", globals.FormatMoney(changed_balance-previous_balance), tx.Height, bl.Tx_hashes[i].String(),  entry.PaymentID, tx.Src_ID, tx.Data)
 							//fmt.Printf("Received  amount in TX(%d) %s payment id %x Src_ID %s data %s\n",  tx.Height, bl.Tx_hashes[i].String(),  entry.PaymentID, tx.SrcID, tx.Data)
 							total_received += (changed_balance - previous_balance)
