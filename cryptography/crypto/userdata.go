@@ -16,11 +16,13 @@
 
 package crypto
 
-import "math/big"
-import "golang.org/x/crypto/chacha20"
-import "github.com/deroproject/derohe/cryptography/bn256"
+import (
+	"math/big"
 
-import "github.com/go-logr/logr"
+	"github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/go-logr/logr"
+	"golang.org/x/crypto/chacha20"
+)
 
 var Logger logr.Logger = logr.Discard() // default discard all logs, someone needs to set this up
 
@@ -51,6 +53,35 @@ func GenerateSharedSecret(secret *big.Int, peer_publickey *bn256.G1) (shared_key
 	}
 
 	shared_key = Keccak256(compressed[:])
+
+	return
+}
+
+// Derive a key from a random scalar
+// We multiply the generator point by the scalar and hash the compressed point
+func DeriveKeyFromR(r *BNRed) (key [32]byte) {
+	compressed := GPoint.ScalarMult(r).EncodeCompressed()
+	if len(compressed) != 33 {
+		panic("point compression needs to be fixed")
+	}
+
+	key = Keccak256(compressed[:])
+
+	return
+}
+
+// Derive a key from a point and a secret
+// We multiply the point by the inverse of the secret and hash the compressed point
+func DeriveKeyFromPoint(point *bn256.G1, secret *big.Int) (key [32]byte) {
+	sk_inversed := new(big.Int).ModInverse(secret, bn256.Order)
+
+	decrypted_point := new(bn256.G1).ScalarMult(point, sk_inversed)
+	compressed := decrypted_point.EncodeCompressed()
+	if len(compressed) != 33 {
+		panic("point compression needs to be fixed")
+	}
+
+	key = Keccak256(compressed[:])
 
 	return
 }

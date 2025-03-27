@@ -59,7 +59,7 @@ rebuild_tx:
 		panic("currently we cannot use more than 240 bits")
 	}
 
-	for t, _ := range transfers {
+	for t := range transfers {
 
 		var publickeylist, C, CLn, CRn []*bn256.G1
 		var D bn256.G1
@@ -148,6 +148,9 @@ rebuild_tx:
 			fees_done = true
 		}
 
+		// Generate a new randomness for the payload
+		r_payload := crypto.RandomScalarBNRed()
+
 		for i := range publickeylist { // setup commitments
 			var x bn256.G1
 			switch {
@@ -172,24 +175,36 @@ rebuild_tx:
 					panic("currently we donot support ring size >= 512")
 				}
 
-				asset.RPCType = transaction.ENCRYPTED_DEFAULT_PAYLOAD_CBOR
+				asset.RPCType = transaction.ENCRYPTED_DEFAULT_PAYLOAD_CBOR_V2
 
-				data, _ := transfers[t].Payload_RPC.CheckPack(transaction.PAYLOAD0_LIMIT)
+				data, err := transfers[t].Payload_RPC.CheckPack(transaction.PAYLOAD_V2_LIMIT)
+				if err != nil {
+					// TODO, we should returns all the error
+					return nil
+				}
 
-				shared_key := crypto.GenerateSharedSecret(r, publickeylist[i])
+				// Generate the keys for each party
+				// those are stored in the payload too
+				sender_key := new(bn256.G1).ScalarMult(publickeylist[witness_index[0]], r_payload.BigInt())
+				receiver_key := new(bn256.G1).ScalarMult(publickeylist[i], r_payload.BigInt())
 
+				// Each point is 33 bytes compressed
+				// This means we have a 66 bytes overhead
+				asset.RPCPayload = append(asset.RPCPayload, sender_key.EncodeCompressed()...)
+				asset.RPCPayload = append(asset.RPCPayload, receiver_key.EncodeCompressed()...)
+
+				var payload []byte
 				// witness_index[0] is sender, witness_index[1] is receiver
-				asset.RPCPayload = append([]byte{byte(uint(witness_index[0]))}, data...)
+				payload = append(payload, byte(uint(witness_index[0])))
+				payload = append(payload, data...)
 
-				//fmt.Printf("buulding shared_key %x  index of receiver %d\n",shared_key,i)
-				//fmt.Printf("building plaintext payload %x\n",asset.RPCPayload)
-
-				//fmt.Printf("%d packed rpc payload %d %x\n ", t, len(data), data)
 				// make sure used data encryption is optional, just in case we would like to play together with ring members
 				// we intoduce an element to create dependency of input key, so receiver cannot prove otherwise
-				crypto.EncryptDecryptUserData(crypto.Keccak256(shared_key[:], publickeylist[i].EncodeCompressed()), asset.RPCPayload)
+				bytes := crypto.DeriveKeyFromR(r_payload)
+				crypto.EncryptDecryptUserData(crypto.Keccak256(bytes[:], publickeylist[i].EncodeCompressed()), payload)
 
-				//fmt.Printf("building encrypted payload %x\n",asset.RPCPayload)
+				// Inject the encrypted payload now
+				asset.RPCPayload = append(asset.RPCPayload, payload...)
 
 			default:
 				x.ScalarMult(crypto.G, new(big.Int).SetInt64(0))
